@@ -1,0 +1,155 @@
+name: Release Android
+
+on:
+  push:
+    branches:
+      - main
+  workflow_dispatch:
+
+concurrency: ${{ github.workflow }}-${{ github.ref }}
+
+permissions:
+  contents: read
+
+jobs:
+  check-release:
+    name: Check for new version
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    permissions:
+      contents: read
+    outputs:
+      should_release: ${{ steps.check.outputs.should_release }}
+      needs_github_release: ${{ steps.check.outputs.needs_github_release }}
+      version: ${{ steps.check.outputs.version }}
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version-file: .node-version
+
+      - name: Compare package.json version to npm and check GitHub release
+        id: check
+        run: |
+          LOCAL_VERSION=$(node -p "require('./package.json').version")
+          echo "Local version: $LOCAL_VERSION"
+
+          NPM_VERSION=$(npm view agent-browser version 2>/dev/null || echo "0.0.0")
+          echo "npm version: $NPM_VERSION"
+
+          TAG="v$LOCAL_VERSION"
+          if gh release view "$TAG" &>/dev/null; then
+            echo "GitHub release $TAG exists"
+            echo "needs_github_release=false" >> "$GITHUB_OUTPUT"
+          else
+            echo "GitHub release $TAG is missing, will build and upload"
+            echo "needs_github_release=true" >> "$GITHUB_OUTPUT"
+          fi
+
+          if [ "$LOCAL_VERSION" != "$NPM_VERSION" ]; then
+            echo "should_release=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "should_release=false" >> "$GITHUB_OUTPUT"
+          fi
+          echo "version=$LOCAL_VERSION" >> "$GITHUB_OUTPUT"
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+  build-android:
+    name: Build Android ARM64
+    needs: check-release
+    if: needs.check-release.outputs.needs_github_release == 'true'
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Setup pnpm
+        uses: pnpm/action-setup@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version-file: .node-version
+          cache: pnpm
+
+      - name: Install npm dependencies
+        run: pnpm install --frozen-lockfile
+
+      - name: Sync version
+        run: pnpm run version:sync
+
+      - name: Build dashboard
+        run: pnpm --filter dashboard build
+
+      - name: Setup Rust toolchain
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: aarch64-linux-android
+
+      - name: Setup Android NDK
+        uses: nttld/setup-ndk@v1
+        with:
+          ndk-version: r27b
+          add-to-path: true
+
+      - name: Install cargo-zigbuild
+        run: |
+          pip3 install ziglang
+          cargo install cargo-zigbuild
+
+      - name: Configure Rust linker
+        run: |
+          mkdir -p ~/.cargo
+          cat >> ~/.cargo/config.toml << 'EOF'
+          [target.aarch64-linux-android]
+          linker = "aarch64-linux-android35-clang"
+          EOF
+
+      - name: Cache Rust build artifacts
+        uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: cli
+
+      - name: Build
+        run: cargo zigbuild --release --manifest-path cli/Cargo.toml --target aarch64-linux-android
+
+      - name: Copy binary
+        run: |
+          mkdir -p artifacts
+          cp cli/target/aarch64-linux-android/release/agent-browser artifacts/agent-browser-android-arm64
+          chmod +x artifacts/agent-browser-android-arm64
+
+      - name: Upload artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: agent-browser-android-arm64
+          path: artifacts/agent-browser-android-arm64
+          retention-days: 7
+
+  github-release:
+    name: Upload to GitHub Release
+    needs: [check-release, build-android]
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    permissions:
+      contents: write
+    steps:
+      - name: Download artifact
+        uses: actions/download-artifact@v4
+        with:
+          name: agent-browser-android-arm64
+          path: bin/
+
+      - name: Upload to release
+        run: |
+          VERSION="${{ needs.check-release.outputs.version }}"
+          TAG="v$VERSION"
+          chmod +x bin/agent-browser-android-arm64
+          gh release upload "$TAG" bin/agent-browser-android-arm64 --clobber
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
