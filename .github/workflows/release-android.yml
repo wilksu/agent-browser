@@ -112,6 +112,9 @@ jobs:
 
       - name: Build
         run: cargo build --release --manifest-path cli/Cargo.toml --target aarch64-linux-android
+        env:
+          CC_aarch64_linux_android: aarch64-linux-android35-clang
+          AR_aarch64_linux_android: llvm-ar
 
       - name: Copy binary
         run: |
