@@ -95,15 +95,26 @@ jobs:
         uses: nttld/setup-ndk@v1
         with:
           ndk-version: r27b
-          add-to-path: true
+          add-to-path: false
 
-      - name: Configure Rust linker
+      - name: Add NDK toolchain to PATH
         run: |
           NDK_BIN="$ANDROID_NDK_HOME/toolchains/llvm/prebuilt/linux-x86_64/bin"
+          echo "$NDK_BIN" >> "$GITHUB_PATH"
+          echo "NDK_BIN=$NDK_BIN" >> "$GITHUB_ENV"
+
+      - name: Verify NDK toolchain
+        run: |
+          aarch64-linux-android35-clang --version
+          llvm-ar --version
+
+      - name: Configure Rust linkers
+        run: |
           mkdir -p ~/.cargo
-          cat >> ~/.cargo/config.toml << EOF
+          cat >> ~/.cargo/config.toml << 'EOF'
           [target.aarch64-linux-android]
-          linker = "$NDK_BIN/aarch64-linux-android35-clang"
+          linker = "aarch64-linux-android35-clang"
+          ar = "llvm-ar"
           EOF
 
       - name: Cache Rust build artifacts
@@ -112,11 +123,10 @@ jobs:
           workspaces: cli
 
       - name: Build
-        run: |
-          NDK_BIN="$ANDROID_NDK_HOME/toolchains/llvm/prebuilt/linux-x86_64/bin"
-          export CC_aarch64_linux_android="$NDK_BIN/aarch64-linux-android35-clang"
-          export AR_aarch64_linux_android="$NDK_BIN/llvm-ar"
-          cargo build --release --manifest-path cli/Cargo.toml --target aarch64-linux-android
+        run: cargo build --release --manifest-path cli/Cargo.toml --target aarch64-linux-android
+        env:
+          CC_aarch64_linux_android: aarch64-linux-android35-clang
+          AR_aarch64_linux_android: llvm-ar
 
       - name: Copy binary
         run: |
