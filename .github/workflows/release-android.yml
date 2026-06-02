@@ -163,6 +163,10 @@ jobs:
           VERSION="${{ needs.check-release.outputs.version }}"
           TAG="v$VERSION"
           chmod +x bin/agent-browser-android-arm64
-          gh release upload "$TAG" bin/agent-browser-android-arm64 --clobber
+          if gh release view "$TAG" &>/dev/null; then
+            gh release upload "$TAG" bin/agent-browser-android-arm64 --clobber
+          else
+            gh release create "$TAG" bin/agent-browser-android-arm64 --draft --notes "Android ARM64 build"
+          fi
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
