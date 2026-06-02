@@ -1235,6 +1235,11 @@ fn build_playwright_binary_path(chromium_dir: &Path) -> PathBuf {
     chromium_dir.join("chrome-win/chrome.exe")
 }
 
+#[cfg(not(any(target_os = "macos", target_os = "linux", target_os = "windows")))]
+fn build_playwright_binary_path(chromium_dir: &Path) -> PathBuf {
+    chromium_dir.join("chrome")
+}
+
 fn expand_tilde(path: &str) -> String {
     if let Some(rest) = path.strip_prefix('~') {
         if let Some(home) = dirs::home_dir() {
