@@ -97,11 +97,6 @@ jobs:
           ndk-version: r27b
           add-to-path: true
 
-      - name: Install cargo-zigbuild
-        run: |
-          pip3 install ziglang
-          cargo install cargo-zigbuild
-
       - name: Configure Rust linker
         run: |
           mkdir -p ~/.cargo
@@ -116,7 +111,7 @@ jobs:
           workspaces: cli
 
       - name: Build
-        run: cargo zigbuild --release --manifest-path cli/Cargo.toml --target aarch64-linux-android
+        run: cargo build --release --manifest-path cli/Cargo.toml --target aarch64-linux-android
 
       - name: Copy binary
         run: |
