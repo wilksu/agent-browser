@@ -99,10 +99,11 @@ jobs:
 
       - name: Configure Rust linker
         run: |
+          NDK_BIN="$ANDROID_NDK_HOME/toolchains/llvm/prebuilt/linux-x86_64/bin"
           mkdir -p ~/.cargo
-          cat >> ~/.cargo/config.toml << 'EOF'
+          cat >> ~/.cargo/config.toml << EOF
           [target.aarch64-linux-android]
-          linker = "aarch64-linux-android35-clang"
+          linker = "$NDK_BIN/aarch64-linux-android35-clang"
           EOF
 
       - name: Cache Rust build artifacts
@@ -110,17 +111,12 @@ jobs:
         with:
           workspaces: cli
 
-      - name: Debug NDK paths
-        run: |
-          echo "ANDROID_NDK_HOME=$ANDROID_NDK_HOME"
-          echo "PATH=$PATH"
-          ls $ANDROID_NDK_HOME/toolchains/llvm/prebuilt/linux-x86_64/bin/aarch64* 2>/dev/null || echo "No aarch64 binaries found in NDK"
-
       - name: Build
-        run: cargo build --release --manifest-path cli/Cargo.toml --target aarch64-linux-android
-        env:
-          CC_aarch64_linux_android: aarch64-linux-android35-clang
-          AR_aarch64_linux_android: llvm-ar
+        run: |
+          NDK_BIN="$ANDROID_NDK_HOME/toolchains/llvm/prebuilt/linux-x86_64/bin"
+          export CC_aarch64_linux_android="$NDK_BIN/aarch64-linux-android35-clang"
+          export AR_aarch64_linux_android="$NDK_BIN/llvm-ar"
+          cargo build --release --manifest-path cli/Cargo.toml --target aarch64-linux-android
 
       - name: Copy binary
         run: |
